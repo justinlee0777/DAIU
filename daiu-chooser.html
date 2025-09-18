@@ -1,0 +1,352 @@
+<style>
+    .daiu-chooser {
+        display: flex;
+        flex-direction: column;
+        gap: 1em;
+    }
+
+    .question {
+        border: 1px solid black;
+        position: relative;
+    }
+
+    .questionText {
+        position: absolute;
+        width: 90%;
+    }
+
+    [id*=disclosure] code {
+        display: block;
+    }
+</style>
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        /**
+         * interface Answers {
+         *   doYouKnowWhichTagYouNeed?: boolean;
+         * }
+         * 
+         * interface Question {
+         *  text: string;
+         *  type: 'yesOrNo' | Array<{ text: string; value: string; }>;
+         * 
+         *  showWhen: Answers;
+         * }
+         * 
+         * interface Disclosure {
+         *  type: 'None' | 'Assist' | 'Remix' | 'Major' | 'Full';
+         *  caption: {
+         *      fullLength: (answers: Answers) => {
+         *          origin: string;
+         *          aiInvolvement: string;
+         *          verification: string;
+         *      };
+         *      shortLength: string;
+         *  };
+         *  tags: (answers: Answers) => {
+         *      origin: string;
+         *      level: string;
+         *      verification: string;
+         *      description: string;
+         *  };
+         *  showWhen: Answers;
+         * }
+         */
+        const containingElement = document.body; // NOTE: THIS SHOULD BE CHANGED
+
+        const form = document.createElement('form');
+        form.className = 'daiu-chooser';
+
+        let currentAnswers = {};
+
+        function toKebabCase(text) {
+            return text
+                .replaceAll(/['|?']/g, '')
+                .replaceAll(/ /g, '-');
+        }
+
+        function getDisclosureId(disclosure) {
+            return `disclosure-${disclosure.type}`;
+        }
+
+        const doYouKnowWhichTagYouNeed = {
+            text: 'Do you know which tag you need?',
+            type: 'yesOrNo',
+            showWhen: {},
+        };
+
+        const doYouKnowWhichTagYouNeedValue = toKebabCase(doYouKnowWhichTagYouNeed.text);
+
+        const whichTagDoYouNeed = {
+            text: 'Which tag do you need?',
+            type: [
+                {
+                    text: 'None',
+                    value: 'None',
+                },
+                {
+                    text: 'Assist',
+                    value: 'Assist',
+                },
+                {
+                    text: 'Remix',
+                    value: 'Remix',
+                },
+                {
+                    text: 'Major',
+                    value: 'Major',
+                },
+                {
+                    text: 'Full',
+                    value: 'Full',
+                }
+            ],
+            showWhen: {
+                [doYouKnowWhichTagYouNeedValue]: 'Yes',
+            },
+        };
+
+        const whichTagDoYouNeedValue = toKebabCase(whichTagDoYouNeed.text);
+
+        const whatsTheOrigin = {
+            text: `What's the origin of the work?`,
+            type: [
+                {
+                    text: `I created it myself.`,
+                    value: `selfMade`,
+                },
+            ],
+            showWhen: {
+                [doYouKnowWhichTagYouNeedValue]: 'No',
+            },
+        };
+
+        const questions = [
+            doYouKnowWhichTagYouNeed,
+            whichTagDoYouNeed,
+        ];
+
+        const currentVerification = 'DAIU 1.0';
+
+        const noneDisclosure = {
+            type: 'None',
+            caption: {
+                fullLength: (answers) => {
+                    return {
+                        origin: 'Human',
+                        aiInvolvement: 'none',
+                        verification: currentVerification,
+                    };
+                },
+                shortLength: `HM None - ${currentVerification}`,
+            },
+            tags: (answers) => {
+                return {
+                    origin: `<meta name="daiu:origin" content="HM">`,
+                    level: `<meta name="daiu:level"  content="assist">`,
+                    verification: `<meta name="daiu:verification" content="${currentVerification}">`,
+                    description: `<meta name="daiu:description" content="???">`
+                };
+            },
+            showWhen: {
+                [doYouKnowWhichTagYouNeedValue]: 'Yes',
+                [whichTagDoYouNeedValue]: 'None',
+            },
+        };
+
+        const assistDisclosure = {
+            type: 'Assist',
+            caption: {
+                fullLength: (answers) => {
+
+                },
+                shortLength: `HM Assist - `,
+            },
+        };
+
+        const disclosures = [
+            noneDisclosure,
+        ];
+
+        function renderQuestion(question) {
+            const elementId = toKebabCase(question.text);
+
+            const fieldset = document.createElement('fieldset');
+            fieldset.id = elementId;
+
+            const legend = document.createElement('legend');
+            legend.innerText = question.text;
+
+            fieldset.appendChild(legend);
+
+            if (question.type === 'yesOrNo') {
+                const choices = ['Yes', 'No'];
+
+                const inputs = choices.flatMap(choice => {
+                    const input = document.createElement('input');
+
+                    input.type = 'radio';
+                    input.value = choice;
+                    input.id = `${elementId}-${choice}`;
+                    input.name = elementId;
+                    input.addEventListener('change', event => {
+                        if (event.target.checked) {
+                            currentAnswers = {
+                                ...currentAnswers,
+                                [elementId]: event.target.value,
+                            };
+                        }
+
+                        render();
+                    });
+
+                    const label = document.createElement('label');
+                    label.innerText = choice;
+                    label.htmlFor = input.id;
+
+                    return [input, label];
+                });
+
+                fieldset.append(...inputs);
+            } else {
+                const select = document.createElement('select');
+                select.id = elementId;
+                select.name = elementId;
+
+                const selectLabel = document.createElement('label');
+                selectLabel.htmlFor = select.id;
+
+                const options = [{ text: '', value: '' }, ...question.type].map(({ text, value }) => {
+                    const option = document.createElement('option');
+                    option.value = value;
+                    option.innerText = text;
+
+                    return option;
+                });
+
+                select.addEventListener('change', event => {
+                    currentAnswers = {
+                        ...currentAnswers,
+                        [elementId]: event.target.value,
+                    };
+
+                    render();
+                });
+
+                select.append(...options);
+
+                fieldset.append(selectLabel, select);
+            }
+
+            form.appendChild(fieldset);
+        }
+
+        function renderDisclosure(disclosure) {
+            const disclosureElement = document.createElement('div');
+            disclosureElement.id = getDisclosureId(disclosure);
+
+            const captions = document.createElement('div');
+
+            const fullLengthHeader = document.createElement('h4');
+            fullLengthHeader.innerText = 'Full length option';
+
+            const { origin, aiInvolvement, verification } = disclosure.caption.fullLength(currentAnswers);
+
+            const originElement = document.createElement('p');
+            const originLabel = document.createElement('b');
+            originLabel.textContent = `Origin:`;
+            originElement.innerHTML = `${originLabel.outerHTML} ${origin}`;
+
+            const aiInvolvementElement = document.createElement('p');
+            const aiInvolvementLabel = document.createElement('b');
+            aiInvolvementLabel.textContent = `AI Involvement:`;
+            aiInvolvementElement.innerHTML = `${aiInvolvementLabel.outerHTML} ${aiInvolvement}`;
+
+            const verificationElement = document.createElement('p');
+            const verificationLabel = document.createElement('b');
+            verificationLabel.textContent = `Verification:`;
+            verificationElement.innerHTML = `${verificationLabel.outerHTML} ${verification}`;
+
+            const shortLengthHeader = document.createElement('h4');
+            shortLengthHeader.textContent = 'Short length option';
+
+            const shortLengthContent = document.createElement('p');
+            const shortLengthLabel = document.createElement('b');
+            shortLengthLabel.textContent = `Origin:`;
+            shortLengthContent.innerHTML = `${shortLengthLabel.outerHTML} ${disclosure.caption.shortLength}`;
+
+            captions.append(fullLengthHeader, originElement, aiInvolvementElement, verificationElement, shortLengthHeader, shortLengthContent);
+
+            const tags = document.createElement('div');
+
+            const { origin: originTag, level, verification: verificationTag, description } = disclosure.tags(currentAnswers);
+
+            const tagHeader = document.createElement('h4');
+            tagHeader.textContent = 'Tags';
+
+            const originTagElement = document.createElement('code');
+            originTagElement.textContent = originTag;
+
+            const originLevelElement = document.createElement('code');
+            originLevelElement.textContent = level;
+
+            const originVerificationElement = document.createElement('code');
+            originVerificationElement.textContent = verificationTag;
+
+            const originDescriptionElement = document.createElement('code');
+            originDescriptionElement.textContent = description;
+
+            tags.append(tagHeader, originTagElement, originLevelElement, originVerificationElement, originDescriptionElement);
+
+            disclosureElement.append(captions, tags);
+
+            form.appendChild(disclosureElement);
+        }
+
+        function render() {
+            const currentAnswerEntries = Object.entries(currentAnswers),
+                entriesLength = currentAnswerEntries.length;
+
+            let inputsToBeRemoved = [...form.children].map(element => element.id);
+
+            for (const question of questions) {
+                const showWhenEntries = Object.entries(question.showWhen),
+                    showWhenEntriesLength = showWhenEntries.length;
+
+                if (
+                    showWhenEntries.every(([key, value]) => currentAnswerEntries.some(([answerKey, answerValue]) => key === answerKey && value === answerValue))
+                ) {
+                    const elementId = toKebabCase(question.text);
+
+                    if (inputsToBeRemoved.includes(elementId)) {
+                        inputsToBeRemoved = inputsToBeRemoved.filter(id => elementId !== id);
+                    } else {
+                        renderQuestion(question);
+                    }
+                }
+            }
+
+            for (const disclosure of disclosures) {
+                const showWhenEntries = Object.entries(disclosure.showWhen);
+
+                if (
+                    showWhenEntries.every(([key, value]) => currentAnswerEntries.some(([answerKey, answerValue]) => key === answerKey && value === answerValue))
+                ) {
+                    const elementId = getDisclosureId(disclosure);
+
+                    if (inputsToBeRemoved.includes(elementId)) {
+                        inputsToBeRemoved = inputsToBeRemoved.filter(id => elementId !== id);
+                    } else {
+                        renderDisclosure(disclosure);
+                    }
+                }
+            }
+
+            inputsToBeRemoved.forEach(inputId => document.getElementById(inputId).remove());
+        }
+
+        render();
+
+        containingElement.appendChild(form);
+    });
+</script>

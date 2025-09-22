@@ -18,6 +18,10 @@
     [id*=disclosure] code {
         display: block;
     }
+
+    input[type=text] {
+        width: 100%;
+    }
 </style>
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -28,7 +32,7 @@
          * 
          * interface Question {
          *  text: string;
-         *  type: 'yesOrNo' | Array<{ text: string; value: string; }>;
+         *  type: 'yesOrNo' | 'userInput' | Array<{ text: string; value: string; }>;
          * 
          *  showWhen: Answers;
          * }
@@ -121,9 +125,24 @@
             },
         };
 
+        /**
+         * TODO: I can see this one getting complicated.
+         */
+        const howDidYouUseAIToAssist = {
+            text: `How did you use AI to assist?`,
+            type: 'userInput',
+            showWhen: {
+                [doYouKnowWhichTagYouNeedValue]: 'Yes',
+                [whichTagDoYouNeedValue]: 'Assist',
+            },
+        };
+
+        const howDidYouUseAIToAssistValue = toKebabCase(howDidYouUseAIToAssist.text);
+
         const questions = [
             doYouKnowWhichTagYouNeed,
             whichTagDoYouNeed,
+            howDidYouUseAIToAssist,
         ];
 
         const currentVerification = 'DAIU 1.0';
@@ -143,7 +162,7 @@
             tags: (answers) => {
                 return {
                     origin: `<meta name="daiu:origin" content="HM">`,
-                    level: `<meta name="daiu:level"  content="assist">`,
+                    level: `<meta name="daiu:level"  content="none">`,
                     verification: `<meta name="daiu:verification" content="${currentVerification}">`,
                     description: `<meta name="daiu:description" content="???">`
                 };
@@ -158,14 +177,31 @@
             type: 'Assist',
             caption: {
                 fullLength: (answers) => {
-
+                    return {
+                        origin: 'Human',
+                        aiInvolvement: `assist - ${answers[howDidYouUseAIToAssistValue] ?? ''}`,
+                        verification: currentVerification,
+                    };
                 },
-                shortLength: `HM Assist - `,
+                shortLength: `HM Assist - ${currentVerification}`,
+            },
+            tags: (answers) => {
+                return {
+                    origin: `<meta name="daiu:origin" content="HM">`,
+                    level: `<meta name="daiu:level"  content="assist">`,
+                    verification: `<meta name="daiu:verification" content="${currentVerification}">`,
+                    description: `<meta name="daiu:description" content="${answers[howDidYouUseAIToAssistValue] ?? ''}">`
+                };
+            },
+            showWhen: {
+                [doYouKnowWhichTagYouNeedValue]: 'Yes',
+                [whichTagDoYouNeedValue]: 'Assist',
             },
         };
 
         const disclosures = [
             noneDisclosure,
+            assistDisclosure,
         ];
 
         function renderQuestion(question) {
@@ -178,6 +214,8 @@
             legend.innerText = question.text;
 
             fieldset.appendChild(legend);
+
+            const elementsToAppend = [];
 
             if (question.type === 'yesOrNo') {
                 const choices = ['Yes', 'No'];
@@ -207,7 +245,26 @@
                     return [input, label];
                 });
 
-                fieldset.append(...inputs);
+                elementsToAppend.push(...inputs);
+            } else if (question.type === 'userInput') {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.elementId = elementId;
+                input.name = elementId;
+
+                const inputLabel = document.createElement('label');
+                inputLabel.htmlFor = input.id;
+
+                input.addEventListener('change', event => {
+                    currentAnswers = {
+                        ...currentAnswers,
+                        [elementId]: event.target.value,
+                    };
+
+                    render();
+                });
+
+                elementsToAppend.push(inputLabel, input);
             } else {
                 const select = document.createElement('select');
                 select.id = elementId;
@@ -235,72 +292,109 @@
 
                 select.append(...options);
 
-                fieldset.append(selectLabel, select);
+                elementsToAppend.push(selectLabel, select);
             }
+
+            fieldset.append(...elementsToAppend);
 
             form.appendChild(fieldset);
         }
 
         function renderDisclosure(disclosure) {
-            const disclosureElement = document.createElement('div');
-            disclosureElement.id = getDisclosureId(disclosure);
+            const disclosureElementId = getDisclosureId(disclosure);
 
-            const captions = document.createElement('div');
+            const captionOriginId = `${disclosureElementId}-caption-origin`,
+                captionInvolvementId = `${disclosureElementId}-caption-involvement`,
+                captionVerificationId = `${disclosureElementId}-caption-verification`,
+                captionShortId = `${disclosureElementId}-caption-short`,
+                tagOriginId = `${disclosureElementId}-tag-origin`,
+                tagLevelId = `${disclosureElementId}-tag-level`,
+                tagVerificationId = `${disclosureElementId}-tag-verification`,
+                tagDescriptionId = `${disclosureElementId}-tag-description`;
 
-            const fullLengthHeader = document.createElement('h4');
-            fullLengthHeader.innerText = 'Full length option';
+            let disclosureElement = document.getElementById(disclosureElementId);
+            
+            if (!disclosureElement) {
+                disclosureElement = document.createElement('div');
+                disclosureElement.id = disclosureElementId;
+
+                const captions = document.createElement('div');
+
+                const fullLengthHeader = document.createElement('h4');
+                fullLengthHeader.innerText = 'Full length option';
+
+                const originElement = document.createElement('p');
+                originElement.id = captionOriginId;
+                const originLabel = document.createElement('b');
+                originLabel.textContent = `Origin: `;
+                originElement.append(originLabel, document.createElement('span'));
+
+                const aiInvolvementElement = document.createElement('p');
+                aiInvolvementElement.id = captionInvolvementId;
+                const aiInvolvementLabel = document.createElement('b');
+                aiInvolvementLabel.textContent = `AI Involvement: `;
+                aiInvolvementElement.append(aiInvolvementLabel, document.createElement('span'));
+
+                const verificationElement = document.createElement('p');
+                verificationElement.id = captionVerificationId;
+                const verificationLabel = document.createElement('b');
+                verificationLabel.textContent = `Verification: `;
+                verificationElement.append(verificationLabel, document.createElement('span'));
+
+                const shortLengthHeader = document.createElement('h4');
+                shortLengthHeader.textContent = 'Short length option';
+
+                const shortLengthContent = document.createElement('p');
+                shortLengthContent.id = captionShortId;
+                const shortLengthLabel = document.createElement('b');
+                shortLengthLabel.textContent = `Origin: `;
+                shortLengthContent.append(shortLengthLabel, document.createElement('span'));
+
+                captions.append(fullLengthHeader, originElement, aiInvolvementElement, verificationElement, shortLengthHeader, shortLengthContent);
+
+                const tags = document.createElement('div');
+
+                const tagHeader = document.createElement('h4');
+                tagHeader.textContent = 'Tags';
+
+                const originTagElement = document.createElement('code');
+                originTagElement.id = tagOriginId;
+
+                const originLevelElement = document.createElement('code');
+                originLevelElement.id = tagLevelId;
+
+                const originVerificationElement = document.createElement('code');
+                originVerificationElement.id = tagVerificationId;
+
+                const originDescriptionElement = document.createElement('code');
+                originDescriptionElement.id = tagDescriptionId;
+
+                tags.append(tagHeader, originTagElement, originLevelElement, originVerificationElement, originDescriptionElement);
+
+                disclosureElement.append(captions, tags);
+
+                form.appendChild(disclosureElement);
+            }
 
             const { origin, aiInvolvement, verification } = disclosure.caption.fullLength(currentAnswers);
 
-            const originElement = document.createElement('p');
-            const originLabel = document.createElement('b');
-            originLabel.textContent = `Origin:`;
-            originElement.innerHTML = `${originLabel.outerHTML} ${origin}`;
+            document.querySelector(`#${captionOriginId} span`).textContent = origin;
 
-            const aiInvolvementElement = document.createElement('p');
-            const aiInvolvementLabel = document.createElement('b');
-            aiInvolvementLabel.textContent = `AI Involvement:`;
-            aiInvolvementElement.innerHTML = `${aiInvolvementLabel.outerHTML} ${aiInvolvement}`;
+            document.querySelector(`#${captionInvolvementId} span`).textContent = aiInvolvement;
 
-            const verificationElement = document.createElement('p');
-            const verificationLabel = document.createElement('b');
-            verificationLabel.textContent = `Verification:`;
-            verificationElement.innerHTML = `${verificationLabel.outerHTML} ${verification}`;
+            document.querySelector(`#${captionVerificationId} span`).textContent = verification
 
-            const shortLengthHeader = document.createElement('h4');
-            shortLengthHeader.textContent = 'Short length option';
-
-            const shortLengthContent = document.createElement('p');
-            const shortLengthLabel = document.createElement('b');
-            shortLengthLabel.textContent = `Origin:`;
-            shortLengthContent.innerHTML = `${shortLengthLabel.outerHTML} ${disclosure.caption.shortLength}`;
-
-            captions.append(fullLengthHeader, originElement, aiInvolvementElement, verificationElement, shortLengthHeader, shortLengthContent);
-
-            const tags = document.createElement('div');
-
+            document.querySelector(`#${captionShortId} span`).textContent = disclosure.caption.shortLength;
+            
             const { origin: originTag, level, verification: verificationTag, description } = disclosure.tags(currentAnswers);
 
-            const tagHeader = document.createElement('h4');
-            tagHeader.textContent = 'Tags';
+            document.getElementById(tagOriginId).textContent = originTag;
 
-            const originTagElement = document.createElement('code');
-            originTagElement.textContent = originTag;
+            document.getElementById(tagLevelId).textContent = level;
 
-            const originLevelElement = document.createElement('code');
-            originLevelElement.textContent = level;
+            document.getElementById(tagVerificationId).textContent = verificationTag;
 
-            const originVerificationElement = document.createElement('code');
-            originVerificationElement.textContent = verificationTag;
-
-            const originDescriptionElement = document.createElement('code');
-            originDescriptionElement.textContent = description;
-
-            tags.append(tagHeader, originTagElement, originLevelElement, originVerificationElement, originDescriptionElement);
-
-            disclosureElement.append(captions, tags);
-
-            form.appendChild(disclosureElement);
+            document.getElementById(tagDescriptionId).textContent = description;
         }
 
         function render() {
@@ -336,9 +430,9 @@
 
                     if (inputsToBeRemoved.includes(elementId)) {
                         inputsToBeRemoved = inputsToBeRemoved.filter(id => elementId !== id);
-                    } else {
-                        renderDisclosure(disclosure);
                     }
+
+                    renderDisclosure(disclosure);
                 }
             }
 

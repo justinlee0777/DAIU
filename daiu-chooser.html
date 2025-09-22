@@ -26,10 +26,6 @@
 <script>
     document.addEventListener('DOMContentLoaded', () => {
         /**
-         * interface Answers {
-         *   doYouKnowWhichTagYouNeed?: boolean;
-         * }
-         * 
          * interface Question {
          *  text: string;
          *  type: 'yesOrNo' | 'userInput' | Array<{ text: string; value: string; }>;
@@ -112,21 +108,8 @@
 
         const whichTagDoYouNeedValue = toKebabCase(whichTagDoYouNeed.text);
 
-        const whatsTheOrigin = {
-            text: `What's the origin of the work?`,
-            type: [
-                {
-                    text: `I created it myself.`,
-                    value: `selfMade`,
-                },
-            ],
-            showWhen: {
-                [doYouKnowWhichTagYouNeedValue]: 'No',
-            },
-        };
-
         /**
-         * TODO: I can see this one getting complicated.
+         * Assist flow
          */
         const howDidYouUseAIToAssist = {
             text: `How did you use AI to assist?`,
@@ -139,10 +122,24 @@
 
         const howDidYouUseAIToAssistValue = toKebabCase(howDidYouUseAIToAssist.text);
 
+        /**
+         * Remix flow
+         */
+        const howDidYouUseAIToRemix = {
+            text: `How did you use AI to remix?`,
+            type: 'userInput',
+            showWhen: {
+                [doYouKnowWhichTagYouNeedValue]: 'Yes',
+                [whichTagDoYouNeedValue]: 'Remix',
+            },
+        };
+        const howDidYouUseAIToRemixValue = toKebabCase(howDidYouUseAIToRemix.text);
+
         const questions = [
             doYouKnowWhichTagYouNeed,
             whichTagDoYouNeed,
             howDidYouUseAIToAssist,
+            howDidYouUseAIToRemix,
         ];
 
         const currentVerification = 'DAIU 1.0';
@@ -199,9 +196,36 @@
             },
         };
 
+        const remixDisclosure = {
+            type: 'Remix',
+            caption: {
+                fullLength: (answers) => {
+                    return {
+                        origin: 'Human',
+                        aiInvolvement: `remix - ${answers[howDidYouUseAIToRemixValue] ?? ''}`,
+                        verification: currentVerification,
+                    };
+                },
+                shortLength: `HM Assist - ${currentVerification}`,
+            },
+            tags: (answers) => {
+                return {
+                    origin: `<meta name="daiu:origin" content="HM">`,
+                    level: `<meta name="daiu:level"  content="remix">`,
+                    verification: `<meta name="daiu:verification" content="${currentVerification}">`,
+                    description: `<meta name="daiu:description" content="${answers[howDidYouUseAIToRemixValue] ?? ''}">`
+                };
+            },
+            showWhen: {
+                [doYouKnowWhichTagYouNeedValue]: 'Yes',
+                [whichTagDoYouNeedValue]: 'Remix',
+            },
+        };
+
         const disclosures = [
             noneDisclosure,
             assistDisclosure,
+            remixDisclosure,
         ];
 
         function renderQuestion(question) {
